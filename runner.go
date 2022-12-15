@@ -53,7 +53,7 @@ type runner struct {
 
 // safeRun runs fn and recovers from unexpected panics.
 // it prevents panics from Task.Fn crashing boomer.
-func (r *runner) safeRun(fn func()) {
+func (r *runner) safeRun(fn func(ctx Context), ctx Context) {
 	defer func() {
 		// don't panic
 		err := recover()
@@ -65,7 +65,7 @@ func (r *runner) safeRun(fn func()) {
 			os.Stderr.Write(stackTrace)
 		}
 	}()
-	fn()
+	fn(ctx)
 }
 
 func (r *runner) addOutput(o Output) {
@@ -121,43 +121,63 @@ func (r *runner) outputOnStop() {
 }
 
 func (r *runner) spawnWorkers(spawnCount int, quit chan bool, spawnCompleteFunc func()) {
-	log.Println("Spawning", spawnCount, "clients immediately")
+	log.Println("Spawning", spawnCount, "clients at the rate", r.spawnRate, "clients/s...")
+
+	defer func() {
+		if spawnCompleteFunc != nil {
+			spawnCompleteFunc()
+		}
+	}()
 
 	for i := 1; i <= spawnCount; i++ {
+		sleepTime := time.Duration(1000000/r.spawnRate) * time.Microsecond
+		time.Sleep(sleepTime)
+
 		select {
-		case <-quit:
+		case <-stop:
 			// quit spawning goroutine
-			return
-		case <-r.shutdownChan:
 			return
 		default:
 			atomic.AddInt32(&r.numClients, 1)
 			go func() {
+				// 订阅退出信号
+				quit := make(chan bool)
+				Events.Subscribe("boomer:quit", func() { quit <- true })
+				// 每个机器人，都需要的上下文
+				ctx := NewContext()
+				if t := r.getInitTask(); t != nil {
+					r.safeRun(t.Fn, ctx)
+				}
+
+				defer func() {
+					if r.quitTask != nil {
+						r.safeRun(r.quitTask.Fn, ctx)
+					}
+					atomic.AddInt32(&r.numClients, -1)
+					recover() // 主程序不退出，仅退出当前协程
+				}()
+
 				for {
 					select {
-					case <-quit:
+					case <-stop:
 						return
-					case <-r.shutdownChan:
+					case <-quit:
 						return
 					default:
 						if r.rateLimitEnabled {
 							blocked := r.rateLimiter.Acquire()
 							if !blocked {
 								task := r.getTask()
-								r.safeRun(task.Fn)
+								r.safeRun(task.Fn, ctx)
 							}
 						} else {
 							task := r.getTask()
-							r.safeRun(task.Fn)
+							r.safeRun(task.Fn, ctx)
 						}
 					}
 				}
 			}()
 		}
-	}
-
-	if spawnCompleteFunc != nil {
-		spawnCompleteFunc()
 	}
 }
 
