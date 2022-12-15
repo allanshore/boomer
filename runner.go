@@ -221,6 +221,10 @@ func (r *runner) getTask() *Task {
 	return nil
 }
 
+func (r *runner) getInitTask() *Task {
+	return r.initTask
+}
+
 func (r *runner) startSpawning(spawnCount int, spawnRate float64, spawnCompleteFunc func()) {
 	Events.Publish(EVENT_SPAWN, spawnCount, spawnRate)
 
