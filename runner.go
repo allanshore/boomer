@@ -28,6 +28,8 @@ const (
 type runner struct {
 	state string
 
+	initTask        *Task
+	quitTask        *Task
 	tasks           []*Task
 	totalTaskWeight int
 
@@ -120,7 +122,7 @@ func (r *runner) outputOnStop() {
 	wg.Wait()
 }
 
-func (r *runner) spawnWorkers(spawnCount int, quit chan bool, spawnCompleteFunc func()) {
+func (r *runner) spawnWorkers(spawnCount int, stop chan bool, spawnCompleteFunc func()) {
 	log.Println("Spawning", spawnCount, "clients at the rate", r.spawnRate, "clients/s...")
 
 	defer func() {
