@@ -109,9 +109,9 @@ func (ts *SmoothRoundRobinTaskSet) GetWeight() (weight int) {
 
 // Run will pick up a task in the task set smoothly and run.
 // It can is used as a Task.Fn.
-func (ts *SmoothRoundRobinTaskSet) Run() {
+func (ts *SmoothRoundRobinTaskSet) Run(ctx Context) {
 	task := ts.GetTask()
 	if task != nil {
-		task.Fn()
+		task.Fn(ctx)
 	}
 }
